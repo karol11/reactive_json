@@ -67,30 +67,31 @@ int RUN_ALL_TESTS();
 #define TEST(CASE, TST) TEST_(CASE, TST, ::testing::Test)
 #define TEST_F(CASE, TST) TEST_(CASE, TST, CASE)
 
-#define CHECK(A, B, COND, COND_TEXT) \
+#define G_CHECK_(A, B, COND, COND_TEXT) \
   [&]{ \
     auto a__ = A; \
     auto b__ = B; \
-    if (a__ COND b__) return true; \
+    if (COND) return true; \
     std::cerr << a__ << COND_TEXT << b__ << " at "; \
     return false; \
   }()
 
-#define ASSERT_COND(A, B, COND, COND_TEXT) CHECK(A, B, COND, COND_TEXT) ? std::cout : std::cout << testing::fail(__FILE__, __LINE__) 
-#define EXPECT_COND(A, B, COND, COND_TEXT) testing::check(A, B, COND, COND_TEXT) ? std::cout : std::cout << testing::crlf(__FILE__, __LINE__) 
+#define ASSERT_COND(A, B, COND, COND_TEXT) G_CHECK_(A, B, COND, COND_TEXT) ? std::cout : std::cout << testing::fail(__FILE__, __LINE__) 
+#define EXPECT_COND(A, B, COND, COND_TEXT) G_CHECK_::check(A, B, COND, COND_TEXT) ? std::cout : std::cout << testing::crlf(__FILE__, __LINE__) 
 
-#define ASSERT_EQ(A, B) ASSERT_COND(A, B, ==, "!=")
-#define ASSERT_NE(A, B) ASSERT_COND(A, B, !=, "==")
-#define ASSERT_LT(A, B) ASSERT_COND(A, B, <, ">=")
-#define ASSERT_LE(A, B) ASSERT_COND(A, B, <=, ">")
-#define ASSERT_TRUE(A) ASSERT_COND(true, A, ==, "!=")
-#define ASSERT_FALSE(A) ASSERT_COND(false, A, ==, "!=")
+#define ASSERT_EQ(A, B) ASSERT_COND(A, B, a__==b__, "!=")
+#define ASSERT_NE(A, B) ASSERT_COND(A, B, a__!=b__, "==")
+#define ASSERT_LT(A, B) ASSERT_COND(A, B, a__<b__, ">=")
+#define ASSERT_LE(A, B) ASSERT_COND(A, B, a__<=b__, ">")
+#define ASSERT_TRUE(A) ASSERT_COND(A, true, a__, "!=")
+#define ASSERT_FALSE(A) ASSERT_COND(A, false, !a__, "!=")
+#define ASSERT_DOUBLE_EQ(A, B) ASSERT_COND(A, B, fabs(a__-b__) < 0.00001, "!=")
 
-#define EXPECT_EQ(A, B) EXPECT_COND(A, B, ==, "!=")
-#define EXPECT_NE(A, B) EXPECT_COND(A, B, !=, "==")
-#define EXPECT_LT(A, B) EXPECT_COND(A, B, <, ">=")
-#define EXPECT_LE(A, B) EXPECT_COND(A, B, <=, ">")
-#define EXPECT_TRUE(A) EXPECT_COND(true, A, ==, "!=")
-#define EXPECT_FALSE(A) EXPECT_COND(false, A, ==, "!=")
+#define EXPECT_EQ(A, B) EXPECT_COND(A, B, a__==b__, "!=")
+#define EXPECT_NE(A, B) EXPECT_COND(A, B, a__!=b__, "==")
+#define EXPECT_LT(A, B) EXPECT_COND(A, B, a__<b__, ">=")
+#define EXPECT_LE(A, B) EXPECT_COND(A, B, a__<=b__, ">")
+#define EXPECT_TRUE(A) EXPECT_COND(A, true, a__, "!=")
+#define EXPECT_FALSE(A) EXPECT_COND(A, false, !a__, "!=")
 
 #endif  // _GUNIT_H_

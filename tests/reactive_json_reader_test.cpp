@@ -50,6 +50,7 @@ namespace
             ASSERT_EQ(a.get_string(""), i == 0 ? "sdf" : "fgh");
             i++;
         }));
+        ASSERT_EQ(i, 2);
     }
 
     TEST(ReactiveJson, UnusedFieldsInObjects)
@@ -65,8 +66,83 @@ namespace
     TEST(ReactiveJson, ObjectMinMax)
     {
         reader a(R"-({ "min": -1.0e+28, "max": 1.0e+28 })-");
-        ASSERT_TRUE(a.try_object([&](auto name) {
-            ASSERT_EQ(a.get_number(0), name == "min" ? -1.0e+28 : 1.0e+28);
-        }));
+        a.get_object([&](auto name) {
+            ASSERT_DOUBLE_EQ(a.get_number(0), name == "min" ? -1.0e+28 : 1.0e+28);
+        });
+    }
+
+    TEST(ReactiveJson, IncompleteData)
+    {
+        double d;
+        reader a("-1.0e+28a");
+        ASSERT_FALSE(a.try_number(d)) << "garbage after number";
+
+        a.reset("[");
+        a.get_array([] {});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete array";
+
+        a.reset("{");
+        a.get_object([] (auto field){});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete object";
+
+        a.reset(R"-( {12})-");
+        a.get_object([](auto field) {});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "absent field name";
+
+        a.reset(R"-( {"a"})-");
+        a.get_object([](auto field) {});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "absent ':'";
+
+        a.reset(R"-( {"a":1,})-");
+        a.get_object([](auto field) {});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "dangling ','";
+
+        a.reset(R"-( {"a":1; "x":1})-");
+        a.get_object([&](auto field) { a.get_number(0); });
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "bad delimiter";
+
+        a.reset(R"-( {"a":1 "x":1})-");
+        a.get_object([](auto field) {});
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "no delimiters in object";
+
+        a.reset(R"-( ")-");
+        auto str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete string";
+
+        a.reset(R"-( "\)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete string escape";
+
+        a.reset(R"-( "\x)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "bad string escape";
+
+        a.reset(R"-( "\u)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\u sequence";
+
+        a.reset(R"-( "\u0)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uX sequence";
+
+        a.reset(R"-( "\u12)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uXX sequence";
+
+        a.reset(R"-( "\u123)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uXXX sequence";
+
+        a.reset(R"-( "\udd01)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete first surrogate";
+
+        a.reset(R"-( "\udd01\)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\ after first surrogate";
+
+        a.reset(R"-( "\udd01\u)-");
+        str = a.get_string("");
+        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\u after first surrogate";
     }
 }

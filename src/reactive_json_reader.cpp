@@ -1,10 +1,19 @@
+#include <vector>
+#include <bitset>
+#include <cassert>
+#include <charconv>
+
+#include "gunit.h"
 #include "reactive_json_reader.h"
 
 namespace reactive_json
 {
-    void reader::reset(const char* data)
+    void reader::reset(const char* data, size_t length)
     {
-        pos = reinterpret_cast<const unsigned char*>(data);
+        if (!length)
+            length = strlen(data);
+        pos = (const unsigned char*)data;
+        end = (const unsigned char*)data + length;
         error_pos = nullptr;
         error_text.clear();
         skip_ws();
@@ -12,13 +21,20 @@ namespace reactive_json
 
     bool reader::try_number(double& result)
     {
-        auto moved = pos;
-        result = strtod((const char*)pos, (char**)&moved);
-        if (pos == moved)
+        if (pos == end)
             return false;
-        skip_ws();
-        if (!*moved || *moved == ',' || *moved == ']' || *moved == '}')
-            return (pos = moved), true;
+        auto initial = pos;
+        auto state = std::from_chars((const char*)pos, (const char*)end, result);
+        if (state.ec == std::errc::result_out_of_range) {
+            set_error("numeric overflow");
+            return true;
+        } else  if (state.ec == std::errc()) {
+            pos = (const unsigned char*)state.ptr;
+            skip_ws();
+            if (pos == end || *pos == ',' || *pos == ']' || *pos == '}')
+                return true;
+            pos = initial;
+        }
         return false;
     }
 
@@ -67,7 +83,7 @@ namespace reactive_json
 
     bool reader::read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size)
     {
-        if (*pos != '"')
+        if (pos == end || *pos != '"')
             return false;
         size_t size = 0;
         pos++;
@@ -76,21 +92,28 @@ namespace reactive_json
         auto is_escape = [](unsigned char c) {
             static auto mask = [] {
                 std::bitset<128> r;
-                for (auto c : "\\\"/bfnrt") r.set(c, true);
+                for (auto c : "\\\"/bfnrt")
+                    r.set(c, true);
                 return r;
             }();
             return c < 128 && mask[c];
         };
-        while (*pos != '"') {
-            if (!*pos) {
+        for (;;) {
+            if (pos == end) {
                 set_error("incomplete string");
                 return true;
-            } else if (*pos == '\\') {
-                auto c = *++pos;
-                if (!c) {
+            }
+            if (*pos == '"') {
+                pos++;
+                skip_ws();
+                break;
+            }
+            if (*pos == '\\') {
+                if (++pos == end) {
                     set_error("incomplete escape");
                     return true;
-                } else if (c == 'u') {
+                }
+                if (*pos == 'u') {
                     size_t val = 0;
                     if (!get_codepoint(val))
                         return true;
@@ -103,7 +126,7 @@ namespace reactive_json
                     }
                     size += codepoint_size;
                     continue;
-                } else if (!is_escape(c)) {
+                } else if (!is_escape(*pos)) {
                     set_error("invalid escape");
                     return true;
                 }
@@ -156,7 +179,7 @@ namespace reactive_json
         if (!error_pos) {
             error_pos = pos;
             error_text = std::move(text);
-            pos = (const unsigned char*)"";
+            pos = end;
         }
     }
 
@@ -188,6 +211,10 @@ namespace reactive_json
         pos++;
         auto get_utf16 = [&] {
             auto hex = [&] {
+                if (pos == end) {
+                    set_error("incomplete \\uXXXX sequence");
+                    return false;
+                }
                 if (*pos >= '0' && *pos <= '9')
                     val = (val << 4) | (*pos - '0');
                 else if (*pos >= 'a' && *pos <= 'f')
@@ -212,7 +239,7 @@ namespace reactive_json
         else if (val >= 0xdd00 && val <= 0xDFFF) {
             auto first = val;
             val = 0;
-            if (*pos != '\\' && pos[1] != 'u') {
+            if (pos == end || *pos != '\\' || pos + 1 == end || pos[1] != 'u') {
                 set_error("first surrogare without following \\u");
                 return false;
             }
@@ -270,18 +297,18 @@ namespace reactive_json
 
     void reader::skip_ws()
     {
-        while (*pos && *pos <= ' ')
+        while (pos != end && *pos <= ' ')
             pos++;
     }
 
     void reader::skip_string()
     {
         for (;;) {
-            if (!*pos) {
+            if (pos== end) {
                 set_error("incomplete string while skipping");
                 break;
             } if (*pos == '\\') {
-                if (!*++pos) {
+                if (++pos == end) {
                     set_error("incomplete string escape while skipping");
                     break;
                 }
@@ -296,6 +323,8 @@ namespace reactive_json
 
     void reader::skip_value()
     {
+        if (pos == end)
+            return;
         if (*pos == '{')
             skip_until('}');
         else if (*pos == '[')
@@ -303,7 +332,18 @@ namespace reactive_json
         else if (*pos == '"')
             skip_string();
         else {
-            while (*pos && *pos != ',' && *pos != '}' && *pos != ']') {
+            static auto mask = [] {
+                std::bitset<128> r;
+                r.set('-').set('.').set('+');
+                for (auto c = 'a'; c <= 'z'; c++)
+                    r.set(c);
+                for (auto c = '0'; c <= '9'; c++)
+                    r.set(c);
+                for (auto c = 1; c <= ' '; c++)
+                    r.set(c);
+                return r;
+            }();
+            while (pos != end && *pos < 128 && mask[*pos]) {
                 pos++;
             }
         }
@@ -312,12 +352,9 @@ namespace reactive_json
     void reader::skip_until(char term)
     {
         std::vector<char> expects{ term };
-        for (;;) {
+        while (pos != end) {
             char c = *pos++;
             switch (c) {
-            case 0:
-                set_error(term == '}' ? "incomplete object" : "incomplete array");
-                return;
             case'"':
                 skip_string();
                 break;
@@ -338,13 +375,17 @@ namespace reactive_json
                     skip_ws();
                     return;
                 }
-            default: break;
+                break;
+            default:
+                break;
             }
         }
+        set_error(term == '}' ? "incomplete object" : "incomplete array");
+        return;
     }
 
     bool reader::is(char term) {
-        if (*pos != term)
+        if (pos == end || *pos != term)
             return false;
         pos++;
         skip_ws();
@@ -358,7 +399,7 @@ namespace reactive_json
                 skip_ws();
                 return true;
             }
-            if (*p != *term)
+            if (p == end || *p != *term)
                 return false;
         }
     }

@@ -2,22 +2,23 @@
 #define REACTIVE_JSON_READER_H
 
 #include <string>
-#include <vector>
-#include <bitset>
-#include <cassert>
-#include "gunit.h"
 
 namespace reactive_json
 {
     struct reader
     {
-        reader(const char* data)
+        reader(const char* data, size_t length = 0)
         {
-            reset(data);
+            reset(data, length);
         }
 
         /// Prepares the reader to a new parsing session.
-        void reset(const char* data);
+        void reset(const char* data, size_t length = 0);
+
+        // Checks if passing ended successfully.
+        bool success() {
+            return pos == end && !error_pos;
+        }
 
         /// Attempts to extract the number from current position.
         /// On success
@@ -217,6 +218,7 @@ namespace reactive_json
         bool handle_field_name(std::string& field_name);
 
         const unsigned char* pos;
+        const unsigned char* end;
         const unsigned char* error_pos;
         std::string error_text;
     };
