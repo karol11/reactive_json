@@ -325,13 +325,16 @@ namespace reactive_json
     {
         if (pos == end)
             return;
-        if (*pos == '{')
+        if (*pos == '{') {
+            pos++;
             skip_until('}');
-        else if (*pos == '[')
+        } else if (*pos == '[') {
+            pos++;
             skip_until(']');
-        else if (*pos == '"')
+        } else if (*pos == '"') {
+            pos++;
             skip_string();
-        else {
+        } else {
             static auto mask = [] {
                 std::bitset<128> r;
                 r.set('-').set('.').set('+');
@@ -359,13 +362,15 @@ namespace reactive_json
                 skip_string();
                 break;
             case'[':
+                expects.push_back(']');
+                break;
             case'{':
-                expects.push_back(c);
+                expects.push_back('}');
                 break;
             case']':
             case'}':
                 if (expects.empty() || expects.back() != c) {
-                    std::string error = "unpaired }";
+                    std::string error = "mismatched }";
                     error.back() = c;
                     set_error(error);
                     return;

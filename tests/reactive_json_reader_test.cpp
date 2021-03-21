@@ -145,4 +145,10 @@ namespace
         str = a.get_string("");
         ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\u after first surrogate";
     }
+
+    TEST(ReactiveJson, Skipping) {
+        reader a(R"-({"field":[1,2,3, "text with\rescapes\"\u2200\"", [{},[-1.34.e-11]]], "f1":false})-");
+        a.get_bool(false);
+        ASSERT_TRUE(a.success());
+    }
 }
