@@ -9,389 +9,217 @@
 
 namespace reactive_json
 {
-	struct reader
-	{
-		reader(const char* data) { reset(data); }
-		void reset(const char* data) {
-			pos = reinterpret_cast<const unsigned char*>(data);
-			error_pos = nullptr;
-			error_text.clear();
-			skip_ws();
-		}
+    struct reader
+    {
+        reader(const char* data)
+        {
+            reset(data);
+        }
 
-		bool try_number(double& result) {
-			auto moved = pos;
-			result = strtod((const char*)pos, (char**)&moved);
-			if (pos == moved)
-				return false;
-			skip_ws();
-			if (!*moved || *moved == ',' || *moved == ']' || *moved == '}')
-				return (pos = moved), true;
-			return false;
-		}
+        /// Prepares the reader to a new parsing session.
+        void reset(const char* data);
 
-		double get_number(double default_val) {
-			double r;
-			return try_number(r)
-				? r
-				: default_val;
-		}
+        /// Attempts to extract the number from current position.
+        /// On success
+        /// - returns true,
+        /// - fills `result` with the extracted value
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the `result` and the current position intact
+        /// - returns false.
+        bool try_number(double& result);
 
-		bool try_bool(bool& result) {
-			if (is("false"))
-				return (result = false), true;
-			if (is("true") == 0)
-				return (result = true), true;
-			return false;
-		}
+        /// Extracts the number from current position.
+        /// On failure returns the `default_val`.
+        /// Always skips the current element.
+        double get_number(double default_val);
 
-		bool get_bool(bool default_val) {
-			try_bool(default_val);
-			return default_val;
-		}
+        /// Attempts to extract the boolean value from the current position.
+        /// On success
+        /// - returns true,
+        /// - fills `result` with the extracted value
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the `result` and the current position intact
+        /// - returns false.
+        bool try_bool(bool& result);
 
-		bool get_null() {
-			return is("null");
-		}
+        /// Extracts the boolean value from the current position.
+        /// On failure returns the `default_val`.
+        /// Always skips the current element.
+        bool get_bool(bool default_val);
 
-		bool try_string(std::string& result, size_t max_size = ~0u) {
-			return read_string_to_buffer([](size_t size, void* context) {
-				auto str = reinterpret_cast<std::string*>(context);
-				str->resize(size);
-				return &str->operator[](0);
-			}, &result, max_size);
-		}
+        /// Checks if current value contains `null`.
+        /// If it does, skips it and returns true.
+        /// Otherwise returns false and leave the position intact, allowing to `try_*` or `get_*` the real data.
+        bool get_null()
+        {
+            return is("null");
+        }
 
-		std::string get_string(const char* default_value, size_t max_size = ~0u) {
-			std::string r;
-			return try_string(r, max_size) ? r : std::string(default_value);
-		}
+        /// Attempts to extract the string from the current position.
+        /// On success
+        /// - returns true,
+        /// - fills `result` with the extracted value
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the `result` and the current position intact
+        /// - returns false.
+        /// The `max_size` parameter defines the maxinum amount of bytes to be extracted (the remainder gets skipped).
+        bool try_string(std::string& result, size_t max_size = ~0u);
 
-		bool read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size) {
-			if (*pos != '"') return false;
-			size_t size = 0;
-			pos++;
-			auto p = pos;
-			bool has_tail = false;
-			auto is_escape = [](unsigned char c) {
-				static auto mask = [] {
-					std::bitset<128> r;
-					for (auto c : "\\\"/bfnrt") r.set(c, true);
-					return r;
-				}();
-				return c < 128 && mask[c];
-			};
-			while (*pos != '"') {
-				if (!*pos) {
-					set_error("incomplete string");
-					return true;
-				} else if (*pos == '\\') {
-					auto c = *++pos;
-					if (!c) {
-						set_error("incomplete escape");
-						return true;
-					} else if (c == 'u') {
-						size_t val = 0;
-						if (!get_codepoint(val))
-							return true;
-						auto codepoint_size = val <= 0x7ff
-							? val <= 0x7f ? 1 : 2
-							: val <= 0xffff ? 3 : 4;
-						if (size + codepoint_size > max_size) {
-							has_tail = true;
-							break;
-						}
-						size += codepoint_size;
-						continue;
-					} else if (!is_escape(c)) {
-						set_error("invalid escape");
-						return true;
-					}
-				}
-				pos++;
-				size++;
-				if (size == max_size) {
-					has_tail = true;
-					break;
-				}
-			}
-			auto dst = allocator(size, context);
-			if (!dst) return true;
-			auto stop_at = dst + size;
-			while (dst != stop_at) {
-				if (*p == '\\') {
-					switch (*++p) {
-					case '\\': *dst = '\\'; break;
-					case '"': *dst = '"'; break;
-					case '/': *dst = '/'; break;
-					case 'b': *dst = '\b'; break;
-					case 'f': *dst = '\f'; break;
-					case 'n': *dst = '\n'; break;
-					case 'r': *dst = '\r'; break;
-					case 't': *dst = '\t'; break;
-					case 'u':
-						put_utf8(get_codepoint_no_check(++p), dst);
-						continue;
-					default:
-						assert(false); // already checked with is_escape
-						break;
-					}
-				} else
-					*dst = *p;
-				p++;
-				dst++;
-			}
-			if (has_tail)
-				skip_string();
-			return true;
-		}
+        /// Extracts the string from the current position.
+        /// On failure returns the `default_val`.
+        /// Always skips the current element.
+        /// The returned string is limited to the given `max_value` (the remainder gets skipped).
+        std::string get_string(const char* default_val, size_t max_size = ~0u);
 
-		template<typename ON_ITEM>
-		bool get_array(ON_ITEM on_item) {
-			if (!is('[')) return false;
-			if (is(']')) return true;
-			do {
-				auto p = pos;
-				on_item();
-				if (pos == p)
-					skip_value();
-			} while (is(','));
-			if (!is(']'))
-				set_error("expected ',' or ']'");
-			return true;
-		}
+        /// Attempts to extract the string from the current position to the arbitrary application-defined data structure.
+        /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
+        /// On success
+        /// - returns true,
+        /// - calls the allocatos with given `context` and calculated real size in bytes capped with fills `result`,
+        /// - allocator should returns the `char*` pointer to the application data buffer.
+        /// - if allocator returns null, string is skipped, otherwise it is filled with text data.
+        /// - and advances the stream position past the string.
+        /// If the string is larger than `max_size` only `max_size` are returned, but all string will be skipped.
+        /// Reader doesn't return the partial utf8 runes made from the `\uXXXX` escapes,
+        /// thus the resulting string size might be smaller than the `max_size` by 1..4 bytes.
+        /// On failure
+        /// - doesn't call the `allocator`,
+        /// - leaves the current position intact,
+        /// - returns false.
+        bool read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size = ~0u);
 
-		template<typename ON_FIELD>
-		bool get_object(ON_FIELD on_field) {
-			if (!is('{')) return false;
-			std::string field_name;
-			if (auto p = handle_object_start(field_name)) {
-				do
-					on_field(field_name);
-				while (handle_object_cont(field_name, p));
-			}
-			return true;
-		}
+        /// Attempts to extract an array from the current position.
+        /// On success
+        /// - returns true,
+        /// - calls `on_item` for each array element.
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the `result` and the current position intact
+        /// - returns false.
+        /// The `on_array` handler is a `void()` lambda, that must call any `reader` methods
+        /// to extract the array item data.
+        /// Example:
+        /// reader json("[1,2,3,4]");
+        /// std::vector<double> result;
+        /// bool it_was_array = json.try_array([&]{
+        ///     result.push_back(json.get_number(0));
+        /// });
+        template<typename ON_ITEM>
+        bool try_array(ON_ITEM on_item)
+        {
+            if (!is('['))
+                return false;
+            if (is(']'))
+                return true;
+            do
+                on_item();
+            while (is(','));
+            if (!is(']'))
+                set_error("expected ',' or ']'");
+            return true;
+        }
 
-		void set_error(std::string text) {
-			if (!error_pos) {
-				error_pos = pos;
-				error_text = std::move(text);
-				pos = (const unsigned char*) "";
-			}
-		}
+        /// Extracts an array from the current position.
+        /// On success calls `on_item` for each array element.
+        /// Skips current json element.
+        /// The `on_array` handler is a `void()` lambda, that must call any `reader` methods to extract the array item data.
+        /// Example:
+        /// reader json("[1,2,3,4]");
+        /// std::vector<double> result;
+        /// json.get_array([&]{
+        ///     result.push_back(json.get_number(0));
+        /// });
+        template<typename ON_ITEM>
+        void get_array(ON_ITEM on_item)
+        {
+            if (!try_array(std::move(on_item)))
+                skip_value();
+        }
 
-	private:
-		const unsigned char* handle_object_start(std::string& field_name) {
-			if (is('}')) return nullptr;
-			if (!handle_field_name(field_name))
-				return nullptr;
-			return pos;
-		}
+        /// Attempts to extract an object from the current position.
+        /// On success
+        /// - returns true,
+        /// - calls `on_field` for each field.
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the `result` and the current position intact
+        /// - returns false.
+        /// The `on_field` handler is a `void(std::string field_name)` lambda, that:
+        /// - reseives the field name as a string,
+        /// - can use any any `reader` methods to access the field data.
+        /// Example:
+        /// reader json(R"-( { "x": 1, "y": "hello" } )-");
+        /// std::pair<double, std::string> result;
+        /// bool it_was_object = json.try_object([&] (auto name){
+        ///     if (name == "x") result.first = json.get_number(0);
+        ///     else if (name == "y") result.second = json.get_string("");
+        /// });
+        template<typename ON_FIELD>
+        bool try_object(ON_FIELD on_field)
+        {
+            if (!is('{'))
+                return false;
+            std::string field_name;
+            if (auto p = handle_object_start(field_name))
+            {
+                do
+                    on_field(std::move(field_name));
+                while (handle_object_cont(field_name, p));
+            }
+            return true;
+        }
 
-		bool handle_object_cont(std::string& field_name, const unsigned char*& start_pos) {
-			if (pos == start_pos)
-				skip_value();
-			if (is(',')) {
-				if (handle_field_name(field_name)) {
-					start_pos = pos;
-					return true;
-				}
-			}
-			else if (!is('}'))
-				set_error("expected ',' or '}'");
-			return false;
-		}
+        /// Extracts an object from the current position.
+        /// On success calls `on_field` for each field.
+        /// Skips current json element.
+        /// The `on_field` handler is a `void(std::string field_name)` lambda, that:
+        /// - reseives the field name as a string,
+        /// - can use any any `reader` methods to access the field data.
+        /// Example:
+        /// reader json(R"-( { "x": 1, "y": "hello" } )-");
+        /// std::pair<double, std::string> result;
+        /// json.get_object([&] (auto name){
+        ///     if (name == "x") result.first = json.get_number(0);
+        ///     else if (name == "y") result.second = json.get_string("");
+        /// });
+        template<typename ON_FIELD>
+        void get_object(ON_FIELD on_field)
+        {
+            if (!try_object(std::move(on_field)))
+                skip_value();
+        }
 
-		bool get_codepoint(size_t val) {
-			pos++;
-			auto get_utf16 = [&] {
-				auto hex = [&] {
-					if (*pos >= '0' && *pos <= '9')
-						val = val << 4 | (*pos - '0');
-					else if (*pos >= 'a' && *pos <= 'f')
-						val = val << 4 | (*pos - 'a' + 10);
-					else if (*pos >= 'A' && *pos <= 'F')
-						val = val << 4 | (*pos - 'A' + 10);
-					else {
-						set_error("not a hex digit");
-						return false;
-					}
-					pos++;
-					return true;
-				};
-				return hex() && hex() && hex() && hex();
-			};
-			if (!get_utf16())
-				return false;
-			if (val >= 0xd800 && val <= 0xdbff) {
-				set_error("second surrogare without first one");
-				return false;
-			}
-			else if (val >= 0xdd00 && val <= 0xDFFF) {
-				auto first = val;
-				val = 0;
-				if (*pos != '\\' && pos[1] != 'u') {
-					set_error("first surrogare without following \\u");
-					return false;
-				}
-				pos += 2;
-				if (!get_utf16())
-					return false;
-				if (!(val >= 0xd800 && val <= 0xdbff)) {
-					set_error("first surrogare without second one");
-					return false;
-				}
-				val = ((first & 0x3ff) << 10 | (val & 0x3ff)) + 0x10000;
-			}
-			return true;
-		}
+        /// Sets error state, can be called from any `on_field` / `on_item` handlers, to terminate parsing.
+        void set_error(std::string text);
 
-		size_t get_codepoint_no_check(const unsigned char*& pos) {
-			pos++;
-			auto get_utf16 = [&] {
-				auto hex = [&](char c) {
-					return
-						c >= '0' && c <= '9' ? c - '0' :
-						c >= 'a' && c <= 'f' ? c + 10 - 'a' :
-						c + 10 - 'A';
-				};
-				size_t r = hex(pos[0]) << 24 | hex(pos[1]) << 16 | hex(pos[2]) << 8 | hex(pos[3]);
-				pos += 4;
-				return r;
-			};
-			auto r = get_utf16();
-			return r < 0xdd00 || r > 0xDFFF
-				? r
-				: (pos += 2, ((r & 0x3ff) << 10 | (get_utf16() & 0x3ff)) + 0x10000);
-		}
+        // Returns error position in he parsed json or nullptr is there is no error.
+        const char* get_error_pos() { return (const char*)error_pos; }
 
-		void put_utf8(size_t v, char*& dst)
-		{
-			if (v <= 0x7f)
-				*dst++ = char(v);
-			else {
-				if (v <= 0x7ff)
-					*dst++ = char(v >> 6 | 0xc0);
-				else {
-					if (v <= 0xffff)
-						*dst++ = char(v >> (6 + 6) | 0xe0);
-					else {
-						*dst++ = char(v >> (6 + 6 + 6) | 0xf0);
-						*dst++ = char(((v >> (6 + 6)) & 0x3f) | 0x80);
-					}
-					*dst++ = char(((v >> 6) & 0x3f) | 0x80);
-				}
-				*dst++ = char((v & 0x3f) | 0x80);
-			}
-		}
+        // Returns error text both set by `set_error` manually and the internal parsing errors.
+        // Returns an empty string if no error.
+        const std::string& get_error_message() { return error_text; }
 
-		void skip_ws() {
-			while (*pos <= ' ')
-				pos++;
-		}
+    private:
+        const unsigned char* handle_object_start(std::string& field_name);
+        bool handle_object_cont(std::string& field_name, const unsigned char*& start_pos);
+        bool get_codepoint(size_t& val);
+        size_t get_codepoint_no_check(const unsigned char*& pos);
+        void put_utf8(size_t v, char*& dst);
+        void skip_ws();
+        void skip_string();
+        void skip_value();
+        void skip_until(char term);
+        bool is(char term);
+        bool is(const char* term);
+        bool handle_field_name(std::string& field_name);
 
-		void skip_string() {
-			for (;;) {
-				if (!*pos) {
-					set_error("incomplete string while skipping");
-					break;
-				} if (*pos == '\\') {
-					if (!*++pos) {
-						set_error("incomplete string escape while skipping");
-						break;
-					}
-					++pos;
-				} else if (*pos++ == '"') {
-					break;
-				}
-			}
-			skip_ws();
-		}
-
-		void skip_value() {
-			if (*pos == '{')
-				skip_until('}');
-			else if (*pos == '[')
-				skip_until(']');
-			else if (*pos == '"')
-				skip_string();
-			else {
-				while (*pos && *pos != ',' && *pos != '}' && *pos != ']') {
-					pos++;
-				}
-			}
-		}
-
-		void skip_until(char term) {
-			std::vector<char> expects{ term };
-			for (;;) {
-				char c = *pos++;
-				switch (c) {
-				case 0:
-					set_error(term == '}' ? "incomplete object" : "incomplete array");
-					return;
-				case'"':
-					skip_string();
-					break;
-				case'[':
-				case'{':
-					expects.push_back(c);
-					break;
-				case']':
-				case'}':
-					if (expects.empty() || expects.back() != c) {
-						std::string error = "unpaired }";
-						error.back() = c;
-						set_error(error);
-						return;
-					}
-					expects.pop_back();
-					if (expects.empty()) {
-						skip_ws();
-						return;
-					}
-				default: break;
-				}
-			}
-		}
-
-		bool is(char term) {
-			if (*pos != term)
-				return false;
-			pos++;
-			skip_ws();
-			return true;
-		}
-
-		bool is(const char* term) {
-			for (auto p = pos;; term++, p++) {
-				if (!*term) {
-					pos = p;
-					skip_ws();
-					return true;
-				}
-				if (*p != *term)
-					return false;
-			}
-		}
-
-		bool handle_field_name(std::string& field_name) {
-			if (!try_string(field_name)) {
-				set_error("expected field name");
-				return false;
-			}
-			if (!is(':')) {
-				set_error("expected ':'");
-				return false;
-			}
-			return true;
-		}
-
-		const unsigned char* pos;
-		const unsigned char* error_pos;
-		std::string error_text;
-	};
+        const unsigned char* pos;
+        const unsigned char* error_pos;
+        std::string error_text;
+    };
 }
 
 #endif  // REACTIVE_JSON_READER_H
