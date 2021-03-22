@@ -1,9 +1,9 @@
 # reactive_json
-C++ library that parses JSONs directly into the application data structures, skipping all irrelevant pieces of data.
+## A C++ library that parses JSONs directly into the application data structures, skipping all irrelevant pieces of data.
 
-99% of time applications read JSONs to fill-out their own data structures. Existing parser provide two different approaches to do so:
+99% of applications read JSONs to their own data structures. Existing parser provide two different approaches to do so:
 
-* Read it to the Document Object Model (DOM) and later convert these DOM nodes to application objects.
+* Read it to the Document Object Model (DOM) and later convert these DOM nodes to application objects. This leads to the huge memory and CPU consumption.
 * Parse JSON with some SAX/StAX parser (that's actually a lexer) providing it with hand-written ingenious state machine, that will:
   * map keys to fields,
   * switch contexts on object and arrays start/end,
@@ -11,9 +11,9 @@ C++ library that parses JSONs directly into the application data structures, ski
   * handle different variants of mappings,
   * convert, check and normalize data.
 
-ReactiveJSON works in the whole different paradigm:
+ReactiveJSON works in a slightly different paradigm:
 * Like SAX/StAX it parses data on the fly without building intermediate DOM.
-* But unlike them, ReactiveJSON doesnt feed application with the stream of tokens, instead it allows app to query data this app needed.
+* But unlike them, ReactiveJSON doesnt feed application with the stream of tokens, instead it allows app to query for the data this application needs.
 
 ## Example:
 
@@ -21,13 +21,13 @@ Application has Point and Polygon classes:
 
 ```C++
 struct point{
-    int x, int y;
+    int x, y;
 };
 struct polygon {
     std::string name;
     std::vector<point> points;
     bool is_active;
-}
+};
 
 Application expects JSON to contain an array of points:
 
@@ -39,14 +39,14 @@ Application expects JSON to contain an array of points:
         "points": [
             {"x": 11, "y": 32},
             {"y": 23, "x": 12},
-            {"x": -1, "y": 4},
+            {"x": -1, "y": 4}
         ]
     },
     {
         "points": [
             {"x": 10, "y": 0},
             {"x": 0, "y": 10},
-            {"y": 0, "x": 0},
+            {"y": 0, "x": 0}
         ],
         "active": true,
         "name": "Corner"
@@ -55,7 +55,7 @@ Application expects JSON to contain an array of points:
 ]
 ```
 
-This structure can be parsed as simle as:
+This structure can be parsed in this simple way:
 
 ```C++
 std::vector<polygon> parse_json(const char* data) {
@@ -71,8 +71,8 @@ std::vector<polygon> parse_json(const char* data) {
                 poly.name = json.get_string("");
             else if (name == "points")
                 json.get_array([&]{
-                    poly.emplace_back();
-                    auto& p = poly.back();
+                    poly.points.emplace_back();
+                    auto& p = poly.points.back();
                     json.get_object([&](auto name){
                         if (name == "x")
                             p.x = (int) json.get_number(0);
@@ -91,4 +91,5 @@ This code handles all cases:
 * This code is tolerant to any order of fields in objects.
 * If some fields are absent from the JSON, they will have default values.
 * If some field, root element or array item will have different type, it will be skipped and replaced with default value; for example if json.get_bool(true) is called on a string data, it'll skip this string and return true.
-* There is an additional `reader` methods `try_*` that allow to probe for different data types.
+* There are additional `reader::try_*` methods that allow to probe for different data types (see: `Alternatives` test).
+* Since all parsing performed in plain C++ code, we can easily add validating/transforming/versioning logic without inventing weird template-driven DSLs.
