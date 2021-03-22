@@ -19,46 +19,47 @@ namespace reactive_json
         skip_ws();
     }
 
-    bool reader::try_number(double& result)
+    std::optional<double> reader::try_number()
     {
         if (pos == end)
-            return false;
-        auto initial = pos;
+            return std::nullopt;
+        double result;
         auto state = std::from_chars((const char*)pos, (const char*)end, result);
         if (state.ec == std::errc::result_out_of_range) {
             set_error("numeric overflow");
-            return true;
+            return std::nullopt;
         } else  if (state.ec == std::errc()) {
             pos = (const unsigned char*)state.ptr;
             skip_ws();
             if (pos == end || *pos == ',' || *pos == ']' || *pos == '}')
-                return true;
-            pos = initial;
+                return result;
+            set_error("number format error");
         }
-        return false;
+        return std::nullopt;
     }
 
     double reader::get_number(double default_val)
     {
-        double r;
-        return try_number(r)
-            ? r
-            : (skip_value(), default_val);
+        auto r = try_number();
+        return r ? *r : (skip_value(), default_val);
     }
 
-    bool reader::try_bool(bool& result)
+    std::optional<bool> reader::try_bool()
     {
         if (is("false"))
-            return (result = false), true;
+            return false;
         if (is("true"))
-            return (result = true), true;
-        return false;
+            return true;
+        return std::nullopt;
     }
 
     bool reader::get_bool(bool default_val)
     {
-        if (!try_bool(default_val))
-            skip_value();
+        if (is("false"))
+            return false;
+        if (is("true"))
+            return true;
+        skip_value();
         return default_val;
     }
 
@@ -73,11 +74,19 @@ namespace reactive_json
             &result, max_size);
     }
 
+    std::optional<std::string> reader::try_string(size_t max_size)
+    {
+        std::string result;
+        return try_string(result, max_size)
+            ? std::optional(std::move(result))
+            : std::nullopt;
+    }
+
     std::string reader::get_string(const char* default_val, size_t max_size)
     {
-        std::string r;
-        return try_string(r, max_size)
-            ? std::move(r)
+        auto r = try_string(max_size);
+        return r
+            ? std::move(*r)
             : (skip_value(), std::string(default_val));
     }
 

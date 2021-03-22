@@ -2,6 +2,7 @@
 #define REACTIVE_JSON_READER_H
 
 #include <string>
+#include <optional>
 
 namespace reactive_json
 {
@@ -22,13 +23,12 @@ namespace reactive_json
 
         /// Attempts to extract the number from current position.
         /// On success
-        /// - returns true,
-        /// - fills `result` with the extracted value
+        /// - returns the extracted value
         /// - and advances the stream position.
         /// On failure
-        /// - leaves the `result` and the current position intact
-        /// - returns false.
-        bool try_number(double& result);
+        /// - leaves the current position intact
+        /// - returns `nullopt`.
+        std::optional<double> try_number();
 
         /// Extracts the number from current position.
         /// On failure returns the `default_val`.
@@ -37,13 +37,12 @@ namespace reactive_json
 
         /// Attempts to extract the boolean value from the current position.
         /// On success
-        /// - returns true,
-        /// - fills `result` with the extracted value
+        /// - returns the extracted value
         /// - and advances the stream position.
         /// On failure
-        /// - leaves the `result` and the current position intact
-        /// - returns false.
-        bool try_bool(bool& result);
+        /// - leaves the current position intact
+        /// - returns nullopt.
+        std::optional<bool> try_bool();
 
         /// Extracts the boolean value from the current position.
         /// On failure returns the `default_val`.
@@ -68,6 +67,16 @@ namespace reactive_json
         /// - returns false.
         /// The `max_size` parameter defines the maxinum amount of bytes to be extracted (the remainder gets skipped).
         bool try_string(std::string& result, size_t max_size = ~0u);
+
+        /// Attempts to extract the string from the current position.
+        /// On success
+        /// - returns the extracted value
+        /// - and advances the stream position.
+        /// On failure
+        /// - leaves the current position intact
+        /// - returns nullopt.
+        /// The `max_size` parameter defines the maxinum amount of bytes to be extracted (the remainder gets skipped).
+        std::optional<std::string> try_string(size_t max_size = ~0u);
 
         /// Extracts the string from the current position.
         /// On failure returns the `default_val`.
