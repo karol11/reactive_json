@@ -55,7 +55,7 @@ Application expects JSON to contain an array of points:
 ]
 ```
 
-This structure can be parsed in this simple way:
+This structure can be parsed in this straightforward way:
 
 ```C++
 std::vector<polygon> parse_json(const char* data) {
@@ -87,9 +87,9 @@ std::vector<polygon> parse_json(const char* data) {
 ```
 
 This code handles all cases:
-* If JSON has an unexpected field, it will be skipped along with its subtree.
+* If a JSON has an unexpected field, this field will be skipped with all its subtree.
 * This code is tolerant to any order of fields in objects.
-* If some fields are absent from the JSON, they will have default values.
+* If some field is absent from the JSON, the corresponding object will have default values.
 * If some field, root element or array item will have different type, it will be skipped and replaced with default value; for example if json.get_bool(true) is called on a string data, it'll skip this string and return true.
-* There are additional `reader::try_*` methods that allow to probe for different data types (see: `Alternatives` test).
+* There are additional `reader::try_*` methods that allow to probe for different data types (see: the `Alternatives` test).
 * Since all parsing performed in plain C++ code, we can easily add validating/transforming/versioning logic without inventing weird template-driven DSLs.
