@@ -22,12 +22,13 @@ namespace reactive_json
         }
 
         /// Attempts to extract the number from current position.
-        /// On success
+        /// If the current position contains a number:
         /// - returns the extracted value
         /// - and advances the stream position.
-        /// On failure
+        /// Otherwise:
         /// - leaves the current position intact
         /// - returns `nullopt`.
+        /// If the stream contains ill-formed number, the reader switches to the error state.
         std::optional<double> try_number();
 
         /// Extracts the number from current position.
@@ -36,10 +37,10 @@ namespace reactive_json
         double get_number(double default_val);
 
         /// Attempts to extract the boolean value from the current position.
-        /// On success
+        /// If the current position contains `true` or `false`:
         /// - returns the extracted value
         /// - and advances the stream position.
-        /// On failure
+        /// Otherwise:
         /// - leaves the current position intact
         /// - returns nullopt.
         std::optional<bool> try_bool();
@@ -58,65 +59,74 @@ namespace reactive_json
         }
 
         /// Attempts to extract the string from the current position.
-        /// On success
+        /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
+        /// If current position contains a string:
         /// - returns true,
         /// - fills `result` with the extracted value
         /// - and advances the stream position.
-        /// On failure
+        /// Otherwise:
         /// - leaves the `result` and the current position intact
         /// - returns false.
         /// The `max_size` parameter defines the maxinum amount of bytes to be extracted (the remainder gets skipped).
+        /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs, `reader` switches to the error state.
         bool try_string(std::string& result, size_t max_size = ~0u);
 
         /// Attempts to extract the string from the current position.
-        /// On success
+        /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
+        /// If current position contains a string:
         /// - returns the extracted value
         /// - and advances the stream position.
-        /// On failure
+        /// Otherwise:
         /// - leaves the current position intact
         /// - returns nullopt.
         /// The `max_size` parameter defines the maxinum amount of bytes to be extracted (the remainder gets skipped).
+        /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs, `reader` switches to the error state.
         std::optional<std::string> try_string(size_t max_size = ~0u);
 
         /// Extracts the string from the current position.
-        /// On failure returns the `default_val`.
+        /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
+        /// If current position doesn't contain a string, returns the `default_val`.
         /// Always skips the current element.
         /// The returned string is limited to the given `max_value` (the remainder gets skipped).
+        /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs, `reader` switches to the error state.
         std::string get_string(const char* default_val, size_t max_size = ~0u);
 
         /// Attempts to extract the string from the current position to the arbitrary application-defined data structure.
         /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
-        /// On success
+        /// If current position contains a string:
         /// - returns true,
-        /// - calls the allocatos with given `context` and calculated real size in bytes capped with fills `result`,
-        /// - allocator should returns the `char*` pointer to the application data buffer.
-        /// - if allocator returns null, string is skipped, otherwise it is filled with text data.
-        /// - and advances the stream position past the string.
+        /// - calls the allocator with given `context` and calculated real size in bytes capped with `max_size`
+        /// - allocator should return the `char*` pointer to the application data buffer.
+        /// - if allocator returns null, string is skipped, otherwise it is filled with the text data.
+        /// - advances the stream position past the string.
         /// If the string is larger than `max_size` only `max_size` are returned, but all string will be skipped.
         /// Reader doesn't return the partial utf8 runes made from the `\uXXXX` escapes,
         /// thus the resulting string size might be smaller than the `max_size` by 1..4 bytes.
-        /// On failure
+        /// If current position doesn't contain a string:
         /// - doesn't call the `allocator`,
         /// - leaves the current position intact,
         /// - returns false.
+        /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs,
+        /// the `reader` switches to the error state and never calls the `allocator`.
         bool read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size = ~0u);
 
         /// Attempts to extract an array from the current position.
-        /// On success
+        /// If current position contains an array:
         /// - returns true,
         /// - calls `on_item` for each array element.
         /// - and advances the stream position.
-        /// On failure
-        /// - leaves the `result` and the current position intact
+        /// Otherwise:
+        /// - leaves the current position intact
         /// - returns false.
-        /// The `on_array` handler is a `void()` lambda, that must call any `reader` methods
-        /// to extract the array item data.
+        /// The `on_array` handler is a `void()` lambda, that is invoked on each array item.
+        /// It must call any `reader` methods to extract the array item data.
         /// Example:
         /// reader json("[1,2,3,4]");
         /// std::vector<double> result;
         /// bool it_was_array = json.try_array([&]{
         ///     result.push_back(json.get_number(0));
         /// });
+        /// If the array is malformed, the `reader` switches to the error state.
         template<typename ON_ITEM>
         bool try_array(ON_ITEM on_item)
         {
@@ -133,8 +143,8 @@ namespace reactive_json
         }
 
         /// Extracts an array from the current position.
-        /// On success calls `on_item` for each array element.
-        /// Skips current json element.
+        /// If the current position contains an array it calls `on_item` for each array element.
+        /// Alway skips current json element.
         /// The `on_array` handler is a `void()` lambda, that must call any `reader` methods to extract the array item data.
         /// Example:
         /// reader json("[1,2,3,4]");
@@ -142,6 +152,7 @@ namespace reactive_json
         /// json.get_array([&]{
         ///     result.push_back(json.get_number(0));
         /// });
+        /// If the array is malformed, the `reader` switches to the error state.
         template<typename ON_ITEM>
         void get_array(ON_ITEM on_item)
         {
@@ -150,15 +161,15 @@ namespace reactive_json
         }
 
         /// Attempts to extract an object from the current position.
-        /// On success
+        /// If the current position contains an object:
         /// - returns true,
         /// - calls `on_field` for each field.
-        /// - and advances the stream position.
-        /// On failure
-        /// - leaves the `result` and the current position intact
+        /// - advances the stream position past the object.
+        /// Otherwise:
+        /// - leaves the current position intact
         /// - returns false.
         /// The `on_field` handler is a `void(std::string field_name)` lambda, that:
-        /// - reseives the field name as a string,
+        /// - receives the field name as a string,
         /// - can use any any `reader` methods to access the field data.
         /// Example:
         /// reader json(R"-( { "x": 1, "y": "hello" } )-");
@@ -167,6 +178,7 @@ namespace reactive_json
         ///     if (name == "x") result.first = json.get_number(0);
         ///     else if (name == "y") result.second = json.get_string("");
         /// });
+        /// If the object is malformed, the `reader` switches to the error state.
         template<typename ON_FIELD>
         bool try_object(ON_FIELD on_field)
         {
@@ -183,7 +195,7 @@ namespace reactive_json
         }
 
         /// Extracts an object from the current position.
-        /// On success calls `on_field` for each field.
+        /// If the current position contains an object, calls `on_field` for each field.
         /// Skips current json element.
         /// The `on_field` handler is a `void(std::string field_name)` lambda, that:
         /// - reseives the field name as a string,
@@ -195,6 +207,7 @@ namespace reactive_json
         ///     if (name == "x") result.first = json.get_number(0);
         ///     else if (name == "y") result.second = json.get_string("");
         /// });
+        /// If the object is malformed, the `reader` switches to the error state.
         template<typename ON_FIELD>
         void get_object(ON_FIELD on_field)
         {
@@ -202,7 +215,9 @@ namespace reactive_json
                 skip_value();
         }
 
-        /// Sets error state, can be called from any `on_field` / `on_item` handlers, to terminate parsing.
+        /// Sets error state.
+        /// It can be called from any `on_field` / `on_item` handlers, to terminate parsing.
+        /// In the error state, the `parser` responds nullopt/false to all calls, quits all `get/try_object/array` aggregated calls.
         void set_error(std::string text);
 
         // Returns error position in he parsed json or nullptr is there is no error.
