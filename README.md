@@ -28,6 +28,7 @@ struct polygon {
     std::vector<point> points;
     bool is_active;
 };
+```
 
 Application expects JSON to contain an array of points, something like this:
 
