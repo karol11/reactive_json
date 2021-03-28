@@ -60,7 +60,7 @@ This structure can be parsed in a straightforward way:
 
 ```C++
 std::vector<polygon> parse_json(const char* data) {
-    reactive_json::reader json(data);
+    memory_block_reader::reader json(data);
     std::vector<polygon> result;
     json.get_array([&]{
         result.emplace_back();
@@ -92,5 +92,23 @@ This code handles all the edge cases:
 * This code is tolerant to any order of fields in objects.
 * If some field is absent from the JSON, the corresponding object will have a default value.
 * If some field, root element or array item will have different type, it will be skipped and replaced with a default value; for example if json.get_bool(true) is called on a string data, it'll skip this string and return true.
-* There are additional `reader::try_*` methods that allow to probe for different data types (see: the `Alternatives` test).
 * Since all parsing is performed in plain C++ code, we can easily add validating/transforming/versioning logic without inventing weird template-driven DSLs.
+* There are additional `*reader::try_*` methods that allow to probe for different data types. Example:
+
+```C++
+bool get_my_bool(reader& json) {
+    if (auto i = json.try_number())  // returns optional<double>
+        return *i != 0;
+    if (auto s = a.try_string(5))
+        return v = *s == "true" || *s == "yes" || *s == "1";
+    return a.get_bool(false);
+}
+```
+
+## Library contents
+* istream_reader - reads from `std::istream`.
+* memory_block_reader - reads from the continuous block of memory
+  * no memory overheads,
+  * much faster,
+  * one allocation per string,
+  * but it requires the whole JSON to be in one memory block.

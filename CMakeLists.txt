@@ -6,15 +6,19 @@ set(CMAKE_CXX_STANDARD 17)
 add_definitions(-D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
 
 include_directories (
-    "include"
     "tests"
 )
 
 add_executable (reactive_json
-    "include/reactive_json_reader.h"
-    "src/reactive_json_reader.cpp"
+    "src/istream_reader/istream_reader.h"
+    "src/istream_reader/istream_reader.cpp"
+    "src/istream_reader/istream_reader_test.cpp"
+
+    "src/memory_block_reader/memory_block_reader.h"
+    "src/memory_block_reader/memory_block_reader.cpp"
+    "src/memory_block_reader/memory_block_reader_test.cpp"
 
     "tests/gunit.h"
     "tests/gunit.cpp"
-    "tests/reactive_json_reader_test.cpp"
-)
+    "tests/reader_tests.inc"
+ )

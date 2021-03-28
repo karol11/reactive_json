@@ -1,175 +1,172 @@
 #include <vector>
-#include "reactive_json_reader.h"
 #include "gunit.h"
 
 namespace
 {
-    using reactive_json::reader;
-
-    TEST(ReactiveJson, Postive) {
-        reader a("[[]   ]");
+    TEST(GROUP_NAME, Postive) {
+        MK_READER(a, "[[]   ]");
         int outer = 0, inner = 0;
         ASSERT_TRUE(a.try_array([&] {
             outer++;
             ASSERT_TRUE(a.try_array([&] {
                 inner++;
+                }));
             }));
-        }));
         ASSERT_EQ(outer, 1);
         ASSERT_EQ(inner, 0);
 
-        a.reset("-2.32e-11");
-        ASSERT_EQ(a.get_number(0), -2.32e-11);
+        RESET_READER(a, "-2.32e-11");
+        ASSERT_DOUBLE_EQ(a.get_number(0), -2.32e-11);
 
-        a.reset("\"\"");
+        RESET_READER(a, "\"\"");
         ASSERT_EQ(a.get_number(0), 0.0);
 
-        a.reset("false");
+        RESET_READER(a, "false");
         ASSERT_EQ(a.get_bool(true), false);
 
-        a.reset("true");
+        RESET_READER(a, "true");
         ASSERT_EQ(a.get_bool(false), true);
 
-        a.reset("0");
+        RESET_READER(a, "0");
         ASSERT_EQ(a.get_null(), false);
         ASSERT_EQ(a.get_number(55), 0.0);
     }
 
-    TEST(ReactiveJson, Strings) {
-        reader a(R"-("\u0060\u012a\u12AB")-");
+    TEST(GROUP_NAME, Strings) {
+        MK_READER(a, R"-("\u0060\u012a\u12AB")-");
         ASSERT_EQ(a.get_string(""), u8"\u0060\u012a\u12AB");
     }
 
-    TEST(ReactiveJson, Objects) {
-        reader a(R"-({"asd":"sdf", "dfg":"fgh"})-");
+    TEST(GROUP_NAME, Objects) {
+        MK_READER(a, R"-({"asd":"sdf", "dfg":"fgh"})-");
         int i = 0;
         ASSERT_TRUE(a.try_object([&](auto name) {
             ASSERT_EQ(name, i == 0 ? "asd" : "dfg");
             ASSERT_EQ(a.get_string(""), i == 0 ? "sdf" : "fgh");
             i++;
-        }));
+            }));
         ASSERT_EQ(i, 2);
     }
 
-    TEST(ReactiveJson, UnusedFieldsInObjects) {
-        reader a(R"-({"asd":"sdf", "dfg":"fgh"})-");
+    TEST(GROUP_NAME, UnusedFieldsInObjects) {
+        MK_READER(a, R"-({"asd":"sdf", "dfg":"fgh"})-");
         int i = 0;
         ASSERT_TRUE(a.try_object([&](auto name) {
             ASSERT_EQ(name, i == 0 ? "asd" : "dfg");
             i++;
-        }));
+            }));
     }
 
-    TEST(ReactiveJson, ObjectMinMax) {
-        reader a(R"-({ "min": -1.0e+28, "max": 1.0e+28 })-");
+    TEST(GROUP_NAME, ObjectMinMax) {
+        MK_READER(a, R"-({ "min": -1.0e+28, "max": 1.0e+28 })-");
         a.get_object([&](auto name) {
             ASSERT_DOUBLE_EQ(a.get_number(0), name == "min" ? -1.0e+28 : 1.0e+28);
-        });
+            });
     }
 
-    TEST(ReactiveJson, IncompleteData) {
-        reader a("-1.0e+28a");
+    TEST(GROUP_NAME, IncompleteData) {
+        MK_READER(a, "-1.0e+28a");
+        a.try_number();
         ASSERT_FALSE(a.try_number().has_value()) << "garbage after number";
 
-        a.reset("[");
+        RESET_READER(a, "[");
         a.get_array([] {});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete array";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete array";
 
-        a.reset("{");
-        a.get_object([] (auto field){});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete object";
-
-        a.reset(R"-( {12})-");
+        RESET_READER(a, "{");
         a.get_object([](auto field) {});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "absent field name";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete object";
 
-        a.reset(R"-( {"a"})-");
+        RESET_READER(a, R"-( {12})-");
         a.get_object([](auto field) {});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "absent ':'";
+        ASSERT_FALSE(a.get_error_message().empty()) << "absent field name";
 
-        a.reset(R"-( {"a":1,})-");
+        RESET_READER(a, R"-( {"a"})-");
         a.get_object([](auto field) {});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "dangling ','";
+        ASSERT_FALSE(a.get_error_message().empty()) << "absent ':'";
 
-        a.reset(R"-( {"a":1; "x":1})-");
+        RESET_READER(a, R"-( {"a":1,})-");
+        a.get_object([](auto field) {});
+        ASSERT_FALSE(a.get_error_message().empty()) << "dangling ','";
+
+        RESET_READER(a, R"-( {"a":1; "x":1})-");
         a.get_object([&](auto field) { a.get_number(0); });
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "bad delimiter";
+        ASSERT_FALSE(a.get_error_message().empty()) << "bad delimiter";
 
-        a.reset(R"-( {"a":1 "x":1})-");
+        RESET_READER(a, R"-( {"a":1 "x":1})-");
         a.get_object([](auto field) {});
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "no delimiters in object";
+        ASSERT_FALSE(a.get_error_message().empty()) << "no delimiters in object";
 
-        a.reset(R"-( ")-");
+        RESET_READER(a, R"-( ")-");
         auto str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete string";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete string";
 
-        a.reset(R"-( "\)-");
+        RESET_READER(a, R"-( "\)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete string escape";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete string escape";
 
-        a.reset(R"-( "\x)-");
+        RESET_READER(a, R"-( "\x)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "bad string escape";
+        ASSERT_FALSE(a.get_error_message().empty()) << "bad string escape";
 
-        a.reset(R"-( "\u)-");
+        RESET_READER(a, R"-( "\u)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\u sequence";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\u sequence";
 
-        a.reset(R"-( "\u0)-");
+        RESET_READER(a, R"-( "\u0)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uX sequence";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\uX sequence";
 
-        a.reset(R"-( "\u12)-");
+        RESET_READER(a, R"-( "\u12)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uXX sequence";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\uXX sequence";
 
-        a.reset(R"-( "\u123)-");
+        RESET_READER(a, R"-( "\u123)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\uXXX sequence";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\uXXX sequence";
 
-        a.reset(R"-( "\udd01)-");
+        RESET_READER(a, R"-( "\udd01)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete first surrogate";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete first surrogate";
 
-        a.reset(R"-( "\udd01\)-");
+        RESET_READER(a, R"-( "\udd01\)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\ after first surrogate";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\ after first surrogate";
 
-        a.reset(R"-( "\udd01\u)-");
+        RESET_READER(a, R"-( "\udd01\u)-");
         str = a.get_string("");
-        ASSERT_TRUE(a.get_error_pos() != nullptr) << "incomplete \\u after first surrogate";
+        ASSERT_FALSE(a.get_error_message().empty()) << "incomplete \\u after first surrogate";
     }
 
-    TEST(ReactiveJson, Skipping) {
-        reader a(R"-({"field":[1,2,3, "text with\rescapes\"\u2200\"", [{},[-1.34.e-11]]], "f1":false})-");
+    TEST(GROUP_NAME, Skipping) {
+        MK_READER(a, R"-({"field":[1,2,3, "text with\rescapes\"\u2200\"", [{},[-1.34.e-11]]], "f1":false})-");
         a.get_bool(false);
         ASSERT_TRUE(a.success());
     }
 
-    TEST(ReactiveJson, LimitedString) {
-        reader a(R"-("long string")-");
+    TEST(GROUP_NAME, LimitedString) {
+        MK_READER(a, R"-("long string")-");
         ASSERT_EQ(a.get_string("", 4), "long");
         ASSERT_TRUE(a.success());
 
-        a.reset(R"-("lon\n string")-");
+        RESET_READER(a, R"-("lon\n string")-");
         ASSERT_EQ(a.get_string("", 4), "lon\n");
         ASSERT_TRUE(a.success());
 
-        a.reset(R"-("lon\u1234 string")-");
+        RESET_READER(a, R"-("lon\u1234 string")-");
         ASSERT_EQ(a.get_string("", 4), "lon");
         ASSERT_TRUE(a.success());
     }
 
-    TEST(ReactiveJson, Alternatives) {
-        reader a(R"-("yes")-");
+    TEST(GROUP_NAME, Alternatives) {
+        MK_READER(a, R"-("yes")-");
         bool v = false;
-        if (auto b = a.try_bool())
-            v = *b;
-        else if (auto i = a.try_number())
-            v = *i == 1 || *i == -1;
+        if (auto i = a.try_number())
+            v = *i != 0;
         else if (auto s = a.try_string(5))
             v = *s == "true" || *s == "yes" || *s == "1";
-        a.get_bool(false);
+        else
+            v = a.get_bool(false);
         ASSERT_TRUE(v);
         ASSERT_TRUE(a.success());
     }
@@ -184,7 +181,7 @@ namespace
     };
 
     std::vector<polygon> parse_json(const char* data) {
-        reactive_json::reader json(data);
+        MK_READER(json, data);
         std::vector<polygon> result;
         json.get_array([&] {
             result.emplace_back();
@@ -211,7 +208,7 @@ namespace
         return result;
     }
 
-    TEST(ReactiveJson, RealLifeExample) {
+    TEST(GROUP_NAME, RealLifeExample) {
         auto r = parse_json(R"-(
             [
                 {

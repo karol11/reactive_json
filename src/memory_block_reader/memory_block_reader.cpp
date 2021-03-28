@@ -3,12 +3,11 @@
 #include <cassert>
 #include <charconv>
 
-#include "gunit.h"
-#include "reactive_json_reader.h"
+#include "memory_block_reader.h"
 
 namespace reactive_json
 {
-    void reader::reset(const char* data, size_t length)
+    void memory_block_reader::reset(const char* data, size_t length)
     {
         if (!length)
             length = strlen(data);
@@ -19,7 +18,7 @@ namespace reactive_json
         skip_ws();
     }
 
-    std::optional<double> reader::try_number()
+    std::optional<double> memory_block_reader::try_number()
     {
         if (pos == end)
             return std::nullopt;
@@ -38,13 +37,13 @@ namespace reactive_json
         return std::nullopt;
     }
 
-    double reader::get_number(double default_val)
+    double memory_block_reader::get_number(double default_val)
     {
         auto r = try_number();
         return r ? *r : (skip_value(), default_val);
     }
 
-    std::optional<bool> reader::try_bool()
+    std::optional<bool> memory_block_reader::try_bool()
     {
         if (is("false"))
             return false;
@@ -53,7 +52,7 @@ namespace reactive_json
         return std::nullopt;
     }
 
-    bool reader::get_bool(bool default_val)
+    bool memory_block_reader::get_bool(bool default_val)
     {
         if (is("false"))
             return false;
@@ -63,7 +62,7 @@ namespace reactive_json
         return default_val;
     }
 
-    bool reader::try_string(std::string& result, size_t max_size)
+    bool memory_block_reader::try_string(std::string& result, size_t max_size)
     {
         return read_string_to_buffer(
             [](size_t size, void* context) {
@@ -74,7 +73,7 @@ namespace reactive_json
             &result, max_size);
     }
 
-    std::optional<std::string> reader::try_string(size_t max_size)
+    std::optional<std::string> memory_block_reader::try_string(size_t max_size)
     {
         std::string result;
         return try_string(result, max_size)
@@ -82,7 +81,7 @@ namespace reactive_json
             : std::nullopt;
     }
 
-    std::string reader::get_string(const char* default_val, size_t max_size)
+    std::string memory_block_reader::get_string(const char* default_val, size_t max_size)
     {
         auto r = try_string(max_size);
         return r
@@ -90,7 +89,7 @@ namespace reactive_json
             : (skip_value(), std::string(default_val));
     }
 
-    bool reader::read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size)
+    bool memory_block_reader::read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size)
     {
         if (pos == end || *pos != '"')
             return false;
@@ -183,7 +182,7 @@ namespace reactive_json
         return true;
     }
 
-    void reader::set_error(std::string text)
+    void memory_block_reader::set_error(std::string text)
     {
         if (!error_pos) {
             error_pos = pos;
@@ -192,7 +191,7 @@ namespace reactive_json
         }
     }
 
-    const unsigned char* reader::handle_object_start(std::string& field_name)
+    const unsigned char* memory_block_reader::handle_object_start(std::string& field_name)
     {
         if (is('}')) return nullptr;
         if (!handle_field_name(field_name))
@@ -200,7 +199,7 @@ namespace reactive_json
         return pos;
     }
 
-    bool reader::handle_object_cont(std::string& field_name, const unsigned char*& start_pos)
+    bool memory_block_reader::handle_object_cont(std::string& field_name, const unsigned char*& start_pos)
     {
         if (pos == start_pos)
             skip_value();
@@ -215,7 +214,7 @@ namespace reactive_json
         return false;
     }
 
-    bool reader::get_codepoint(size_t& val)
+    bool memory_block_reader::get_codepoint(size_t& val)
     {
         pos++;
         auto get_utf16 = [&] {
@@ -264,7 +263,7 @@ namespace reactive_json
         return true;
     }
 
-    size_t reader::get_codepoint_no_check(const unsigned char*& pos)
+    size_t memory_block_reader::get_codepoint_no_check(const unsigned char*& pos)
     {
         pos++;
         auto get_utf16 = [&] {
@@ -284,7 +283,7 @@ namespace reactive_json
             : (pos += 2, ((r & 0x3ff) << 10 | (get_utf16() & 0x3ff)) + 0x10000);
     }
 
-    void reader::put_utf8(size_t v, char*& dst)
+    void memory_block_reader::put_utf8(size_t v, char*& dst)
     {
         if (v <= 0x7f)
             *dst++ = char(v);
@@ -304,13 +303,13 @@ namespace reactive_json
         }
     }
 
-    void reader::skip_ws()
+    void memory_block_reader::skip_ws()
     {
         while (pos != end && *pos <= ' ')
             pos++;
     }
 
-    void reader::skip_string()
+    void memory_block_reader::skip_string()
     {
         for (;;) {
             if (pos== end) {
@@ -330,7 +329,7 @@ namespace reactive_json
         skip_ws();
     }
 
-    void reader::skip_value()
+    void memory_block_reader::skip_value()
     {
         if (pos == end)
             return;
@@ -361,7 +360,7 @@ namespace reactive_json
         }
     }
 
-    void reader::skip_until(char term)
+    void memory_block_reader::skip_until(char term)
     {
         std::vector<char> expects{ term };
         while (pos != end) {
@@ -398,7 +397,7 @@ namespace reactive_json
         return;
     }
 
-    bool reader::is(char term) {
+    bool memory_block_reader::is(char term) {
         if (pos == end || *pos != term)
             return false;
         pos++;
@@ -406,7 +405,7 @@ namespace reactive_json
         return true;
     }
 
-    bool reader::is(const char* term) {
+    bool memory_block_reader::is(const char* term) {
         for (auto p = pos;; term++, p++) {
             if (!*term) {
                 pos = p;
@@ -418,7 +417,7 @@ namespace reactive_json
         }
     }
 
-    bool reader::handle_field_name(std::string& field_name) {
+    bool memory_block_reader::handle_field_name(std::string& field_name) {
         if (!try_string(field_name)) {
             set_error("expected field name");
             return false;

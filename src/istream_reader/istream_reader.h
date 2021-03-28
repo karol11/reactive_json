@@ -1,69 +1,65 @@
-#ifndef REACTIVE_JSON_READER_H
-#define REACTIVE_JSON_READER_H
+#ifndef REACTIVE_JSON_ISTREAM_READER_H
+#define REACTIVE_JSON_ISTREAM_READER_H
 
-#include <string>
+#include <istream>
 #include <optional>
 
 namespace reactive_json
 {
-    struct reader
+    /// Reads JSON from preallocated fixed buffer containing the whole JSON image.
+    struct istream_reader
     {
-        reader(const char* data, size_t length = 0)
+        istream_reader(std::unique_ptr<std::istream> stream)
         {
-            reset(data, length);
+            reset(std::move(stream));
         }
 
         /// Prepares the reader to a new parsing session.
-        void reset(const char* data, size_t length = 0);
+        void reset(std::unique_ptr<std::istream> stream);
 
         // Checks if passing ended successfully.
-        bool success() {
-            return pos == end && !error_pos;
-        }
+        bool success() { return cur == 0 && error_text.empty(); }
 
-        /// Attempts to extract the number from current position.
+        /// Attempts to extract a number from the current position.
         /// If the current position contains a number:
         /// - returns the extracted value
-        /// - and advances the stream position.
+        /// - and advances the position.
         /// Otherwise:
         /// - leaves the current position intact
         /// - returns `nullopt`.
-        /// If the stream contains ill-formed number, the reader switches to the error state.
+        /// If the contains ill-formed number, the reader switches to error state.
         std::optional<double> try_number();
 
-        /// Extracts the number from current position.
+        /// Extracts a number from the current position.
         /// On failure returns the `default_val`.
         /// Always skips the current element.
         double get_number(double default_val);
 
-        /// Attempts to extract the boolean value from the current position.
+        /// Attempts to extract a boolean value from the current position.
         /// If the current position contains `true` or `false`:
         /// - returns the extracted value
-        /// - and advances the stream position.
+        /// - and advances the position.
         /// Otherwise:
         /// - leaves the current position intact
         /// - returns nullopt.
         std::optional<bool> try_bool();
 
-        /// Extracts the boolean value from the current position.
+        /// Extracts a boolean value from the current position.
         /// On failure returns the `default_val`.
         /// Always skips the current element.
         bool get_bool(bool default_val);
 
-        /// Checks if current value contains `null`.
+        /// Checks if the current position contains `null`.
         /// If it does, skips it and returns true.
         /// Otherwise returns false and leave the position intact, allowing to `try_*` or `get_*` the real data.
-        bool get_null()
-        {
-            return is("null");
-        }
+        bool get_null() { return is("null"); }
 
         /// Attempts to extract the string from the current position.
         /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
         /// If current position contains a string:
         /// - returns true,
         /// - fills `result` with the extracted value
-        /// - and advances the stream position.
+        /// - and advances the position.
         /// Otherwise:
         /// - leaves the `result` and the current position intact
         /// - returns false.
@@ -75,7 +71,7 @@ namespace reactive_json
         /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
         /// If current position contains a string:
         /// - returns the extracted value
-        /// - and advances the stream position.
+        /// - and advances the position.
         /// Otherwise:
         /// - leaves the current position intact
         /// - returns nullopt.
@@ -91,30 +87,11 @@ namespace reactive_json
         /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs, `reader` switches to the error state.
         std::string get_string(const char* default_val, size_t max_size = ~0u);
 
-        /// Attempts to extract the string from the current position to the arbitrary application-defined data structure.
-        /// Expands the \uXXXX escapes to utf8 encoding. Handles surrogate pairs.
-        /// If current position contains a string:
-        /// - returns true,
-        /// - calls the allocator with given `context` and calculated real size in bytes capped with `max_size`
-        /// - allocator should return the `char*` pointer to the application data buffer.
-        /// - if allocator returns null, string is skipped, otherwise it is filled with the text data.
-        /// - advances the stream position past the string.
-        /// If the string is larger than `max_size` only `max_size` are returned, but all string will be skipped.
-        /// Reader doesn't return the partial utf8 runes made from the `\uXXXX` escapes,
-        /// thus the resulting string size might be smaller than the `max_size` by 1..4 bytes.
-        /// If current position doesn't contain a string:
-        /// - doesn't call the `allocator`,
-        /// - leaves the current position intact,
-        /// - returns false.
-        /// If the parsed string has errors: unterminated, bad escapes, bad utf16 surrogate pairs,
-        /// the `reader` switches to the error state and never calls the `allocator`.
-        bool read_string_to_buffer(char* (*allocator)(size_t size, void* context), void* context, size_t max_size = ~0u);
-
         /// Attempts to extract an array from the current position.
         /// If current position contains an array:
         /// - returns true,
         /// - calls `on_item` for each array element.
-        /// - and advances the stream position.
+        /// - and advances the position.
         /// Otherwise:
         /// - leaves the current position intact
         /// - returns false.
@@ -139,6 +116,7 @@ namespace reactive_json
             while (is(','));
             if (!is(']'))
                 set_error("expected ',' or ']'");
+            skip_ws_after_value();
             return true;
         }
 
@@ -164,7 +142,7 @@ namespace reactive_json
         /// If the current position contains an object:
         /// - returns true,
         /// - calls `on_field` for each field.
-        /// - advances the stream position past the object.
+        /// - advances the position past the object.
         /// Otherwise:
         /// - leaves the current position intact
         /// - returns false.
@@ -221,31 +199,31 @@ namespace reactive_json
         void set_error(std::string text);
 
         // Returns error position in he parsed json or nullptr is there is no error.
-        const char* get_error_pos() { return (const char*)error_pos; }
+        std::streamoff get_error_pos() { error_text.empty() ? std::streampos() : stream->tellg(); }
 
         // Returns error text both set by `set_error` manually and the internal parsing errors.
         // Returns an empty string if no error.
         const std::string& get_error_message() { return error_text; }
 
     private:
-        const unsigned char* handle_object_start(std::string& field_name);
-        bool handle_object_cont(std::string& field_name, const unsigned char*& start_pos);
-        bool get_codepoint(size_t& val);
-        size_t get_codepoint_no_check(const unsigned char*& pos);
-        void put_utf8(size_t v, char*& dst);
+        std::streamoff handle_object_start(std::string& field_name);
+        bool handle_object_cont(std::string& field_name, std::streamoff& start_pos);
+        bool get_codepoint(uint32_t& val);
+        bool put_utf8(size_t v, std::string& dst, size_t& left);
         void skip_ws();
+        void skip_ws_after_value();
         void skip_string();
         void skip_value();
         void skip_until(char term);
         bool is(char term);
         bool is(const char* term);
         bool handle_field_name(std::string& field_name);
+        unsigned char istream_reader::getch();
 
-        const unsigned char* pos;
-        const unsigned char* end;
-        const unsigned char* error_pos;
+        std::unique_ptr<std::istream> stream;
+        unsigned char cur;
         std::string error_text;
     };
 }
 
-#endif  // REACTIVE_JSON_READER_H
+#endif  // REACTIVE_JSON_ISTREAM_READER_H
