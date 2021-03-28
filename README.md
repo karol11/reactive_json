@@ -14,6 +14,7 @@
 ReactiveJSON works in a slightly different paradigm:
 * Like SAX/StAX it parses data on the fly without building intermediate DOM.
 * But unlike them, ReactiveJSON doesn't feed application with the stream of tokens, instead it allows app to query for the data structures this application expects.
+* If some parts of JSON left not claimed, they will be skipped, and it's worth mentioning that in comparison to other libraries the skipping code is not resursive, this protects parser (and application that uses it) from stack overflows if say hacker sent a JSON of 4K '[' characters.
 
 ## Example:
 
