@@ -1,5 +1,7 @@
 # reactive_json
-## A C++ library that parses JSONs directly into the application data structures, skipping all irrelevant pieces of data.
+## A C++ library that reads/writes JSONs directly from/into the application data structures, skipping all irrelevant pieces of data.
+
+## Reader
 
 99% of applications read JSONs to their own data structures. Other parsers provide two different approaches to do so:
 
@@ -106,6 +108,11 @@ bool get_my_bool(reader& json) {
 }
 ```
 
+## Writer
+(TBD)
+See src/jwriter/jwriter_test.cpp
+
+
 ## Library contents
 * istream_reader - reads from `std::istream`.
 * memory_block_reader - reads from the continuous block of memory
@@ -113,3 +120,4 @@ bool get_my_bool(reader& json) {
   * much faster,
   * one allocation per string,
   * but it requires the whole JSON to be in one memory block.
+* jwriter - writes JSON to `std::istream`.
