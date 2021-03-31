@@ -8,7 +8,7 @@
 * First approach: Read the file first to the Document Object Model (DOM) and let the application to convert these DOM nodes into application objects. This leads to the huge memory and CPU overhead.
 * Second approach: Provide the application with some SAX/StAX interface. In this approach JSON library becomes just-a-lexer, and all actual parsing is delegated to the application, that has to implement some hand-written ingenious state machine, that will:
   * map keys to fields,
-  * switch contexts on object and arrays start/end,
+  * switch contexts and mappings on object and arrays start/end,
   * skip all unneeded structures,
   * handle different variants of mappings,
   * convert, check and normalize data.
@@ -18,7 +18,7 @@ ReactiveJSON works in a slightly different paradigm:
 * But unlike them, ReactiveJSON doesn't feed application with the stream of tokens, instead it allows app to query for the data structures this application expects.
 * If some parts of JSON left not claimed, they will be skipped, and it's worth mentioning that in comparison to other libraries the skipping code is not resursive, this protects parser (and application that uses it) from stack overflows if say hacker sent a JSON of 4K '[' characters.
 
-## Example:
+### Example:
 
 Application has two classes - a Point and a Polygon:
 
@@ -109,9 +109,48 @@ bool get_my_bool(reader& json) {
 ```
 
 ## Writer
-(TBD)
-See src/jwriter/jwriter_test.cpp
 
+`reactive_json::writer` allows to serialize application data directly to std::ostream without creating intermediate data structures.
+Writer can be created either as having ownership over the `std::ostream` instance by `unique_ptr` or by using external stream by passing reference.
+
+Writer has a number of overloaded `operator()` that allow to write `null`, `bool`, `double` and `string`.
+
+The arrays are objects are slightly differend:
+* Arrays get written by `write_array` method, that takes two parameters: the `array_size` and a `on_item` lambda, that will write array items. (!) Note: this lambda always take its first `writer` parameter by reference (use `auto&`). This lambda is called for each array item and receives item `index`.
+* Objects are serialized with `write_object` method, that takes a `field_maker` lambda, that is called _one time_ with the `field_stream` object.
+
+Field streams have the same methods as writer but they accept additional parameter `field_name`.
+
+### Example
+
+Write the above data structures from `std::vector<polygon> root` to a file:
+
+```C++
+reactive_json::writer(std::make_unique<std::ostream>(file_name, std::ios::binary))
+.write_array(root.size(), [&](auto& s, size_t i) {
+    s.write_object([&poly = root[i]](auto s) {
+        s("name", poly.name)("active", poly.is_active);
+        s.write_array("points", poly.points.size(), [&](auto& s, size_t i) {
+            s.write_object([&pt = poly.points[i]](auto s){
+                s("x", pt.x)("y", pt.y);
+            });
+        });
+    });
+});
+```
+
+## DOM
+
+What if our application is that 1% of applications that need some arbaitrary Document Object Model (DOM)?
+
+* We can create it and tailor it to our needs with less than 20 lines of code.
+* And with just 16 more LoC it can be parsed from any input stream or memory block.
+* And 16 more LoC gives you ability to write it back.
+
+And since this data model is completely decoupled from JSON parser/generator you can easily modify it,
+or reuse one already existing in your application.
+
+Please use this code as an example [dom_io_test](https://github.com/karol11/reactive_json/tree/main/tests/dom_io_test.cpp).
 
 ## Library contents
 * istream_reader - reads from `std::istream`.
@@ -120,4 +159,4 @@ See src/jwriter/jwriter_test.cpp
   * much faster,
   * one allocation per string,
   * but it requires the whole JSON to be in one memory block.
-* jwriter - writes JSON to `std::istream`.
+* writer - writes JSON to `std::istream`.
