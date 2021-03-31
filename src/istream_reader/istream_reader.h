@@ -6,7 +6,7 @@
 
 namespace reactive_json
 {
-    /// Reads JSON from preallocated fixed buffer containing the whole JSON image.
+    /// Reads JSON from std::istream.
     struct istream_reader
     {
         istream_reader(std::unique_ptr<std::istream> stream)
