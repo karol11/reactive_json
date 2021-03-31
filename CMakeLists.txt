@@ -21,7 +21,9 @@ add_executable (reactive_json
     "tests/gunit.h"
     "tests/gunit.cpp"
     "tests/reader_tests.inc"
+    "tests/dom_io_test.cpp"
 
-    "src/jwriter/jwriter.h"
-    "src/jwriter/jwriter_test.cpp"
+    "src/writer/writer.h"
+    "src/writer/writer.cpp"
+    "src/writer/writer_test.cpp"
 )

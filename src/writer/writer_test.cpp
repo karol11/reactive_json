@@ -1,6 +1,6 @@
 #include<vector>
 #include <sstream>
-#include "jwriter.h"
+#include "writer.h"
 #include "gunit.h"
 
 namespace
@@ -39,7 +39,7 @@ namespace
             }
         };
         stringstream s;
-        jwriter(s).write_array(root.size(), [&](auto& s, size_t i) {
+        reactive_json::writer(s).write_array(root.size(), [&](auto& s, size_t i) {
             s.write_object([&poly = root[i]](auto& s) {
                 s("name", poly.name);
                 s("active", poly.is_active);
