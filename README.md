@@ -1,4 +1,4 @@
-# reactive_json
+# Reactive JSON
 ## A C++ library that reads/writes JSONs directly from/into the application data structures, skipping all irrelevant pieces of data.
 
 ## Reader
@@ -7,8 +7,8 @@
 
 Different parsers usually provide two main approaches to do so:
 
-* First approach: Read the file first to the Document Object Model (DOM) and let the application to convert these DOM nodes into application objects. This leads to the substantual memory and CPU overheads.
-* Second approach: Provide the application with some SAX/StAX interface. In this approach JSON library becomes just-a-lexer, and all actual parsing is delegated to the application, that has to implement some hand-written ingenious state machine, that will:
+* Some read the file first to the Document Object Model (DOM) and let the application to convert these DOM nodes into application objects. This leads to the substantual memory and CPU overheads.
+* Others provide the application with some SAX/StAX interface. In this approach JSON library becomes just-a-lexer, and all actual parsing is delegated to the application, that has to implement some hand-written ingenious state machine, that will:
   * map keys to fields,
   * switch contexts and mappings on object and array starts/ends,
   * skip all unneeded structures,
@@ -22,7 +22,7 @@ ReactiveJSON works in a slightly different paradigm:
 
 ### Example:
 
-Application has two classes - a Point and a Polygon:
+An application has two classes - a Point and a Polygon:
 
 ```C++
 struct point{
@@ -35,7 +35,7 @@ struct polygon {
 };
 ```
 
-Application expects JSON to contain an array of points, something like this:
+This application expects JSON to contain an array of points, something like this:
 
 ```JSON
 [
@@ -69,8 +69,7 @@ std::vector<polygon> parse_json(const char* data) {
     std::vector<polygon> result;
     json.get_array([&]{
         result.emplace_back();
-        auto& poly = result.back();
-        json.get_object([&](auto name){
+        json.get_object([&, &poly = result.back()](auto name){
             if (name == "active")
                 poly.is_active = json.get_bool(false);
             else if (name == "name")
@@ -78,12 +77,11 @@ std::vector<polygon> parse_json(const char* data) {
             else if (name == "points")
                 json.get_array([&]{
                     poly.points.emplace_back();
-                    auto& p = poly.points.back();
-                    json.get_object([&](auto name){
+                    json.get_object([&, &pt = poly.points.back()](auto name){
                         if (name == "x")
-                            p.x = (int) json.get_number(0);
+                            pt.x = (int) json.get_number(0);
                         else if (name == "y")
-                            p.y = (int) json.get_number(0);
+                            pt.y = (int) json.get_number(0);
                     });
                 });
         });
@@ -101,7 +99,7 @@ This code handles all the edge cases:
 * There are additional `*reader::try_*` methods that allow to probe for different data types. Example:
 
 ```C++
-bool get_my_bool(reader& json) {
+bool get_bool_my_way(reader& json) {
     if (auto i = json.try_number())  // returns optional<double>
         return *i != 0;
     if (auto s = a.try_string(5))
@@ -112,13 +110,13 @@ bool get_my_bool(reader& json) {
 
 ## Writer
 
-`reactive_json::writer` allows to serialize application data directly to the `std::ostream` without creating of intermediate data structures.
-This `writer` instance can be created either as having ownership over the `std::ostream` instance (using `unique_ptr`) or by using the external stream (by passing reference).
+The `reactive_json::writer` allows to serialize application data directly to the `std::ostream` without creating of intermediate data structures.
+This `writer` instance can be created as either having ownership over the `std::ostream` instance (using `unique_ptr`) or by borrowing the existing stream (by reference).
 
 Writer has a number of overloaded `operator()` that allow to write `null`, `bool`, `double` and `string` primitives.
 
-The arrays and objects are slightly different:
-* Arrays get written by the `write_array` method, that takes two parameters: the `array_size` and an `on_item` lambda, that will write array items. This lambda is called for each array item and receives item `index`. :warning: This lambda always takes its first `writer` parameter by reference (use `auto&`).
+Arrays and objects are slightly different:
+* Arrays are written by the `write_array` method, that takes two parameters: the `array_size` and an `on_item` lambda, that will write array items. This lambda is called for each array item. It receives item `index`. (:warning: This `on_item` lambda always takes its first `writer` parameter by reference, use `auto&`).
 * Objects are serialized with the `write_object` method. It takes a `field_maker` lambda, that is called _one time_ with the `field_stream` object.
 
 Field streams have the same methods as writer but they accept additional parameter `field_name`.
@@ -146,7 +144,7 @@ reactive_json::writer(std::make_unique<std::ostream>(file_name, std::ios::binary
 
 What if your application is in that 1% of applications which need some arbaitrary Document Object Model (DOM)?
 
-* You can create it and tailor it to your needs with less than 20 lines of code.
+* You can create it and tailor it to your needs with less than 20 lines of code (LoC).
 * And with just 16 more LoC it can be parsed from any input stream or memory block.
 * And 16 more LoC gives you ability to write it back.
 
