@@ -7,7 +7,7 @@
 
 Different parsers usually provide two main approaches to do so:
 
-* Some read the file first to the Document Object Model (DOM) and let the application to convert these DOM nodes into application objects. This leads to the substantual memory and CPU overheads.
+* Some of them read the file first to the Document Object Model (DOM) and let the application to convert these DOM nodes into application objects. This leads to the substantual memory and CPU overheads.
 * Others provide the application with some SAX/StAX interface. In this approach JSON library becomes just-a-lexer, and all actual parsing is delegated to the application, that has to implement some hand-written ingenious state machine, that will:
   * map keys to fields,
   * switch contexts and mappings on object and array starts/ends,
@@ -65,7 +65,7 @@ This structure can be parsed in a straightforward way:
 
 ```C++
 std::vector<polygon> parse_json(const char* data) {
-    memory_block_reader::reader json(data);
+    reactive_json::memory_block_reader json(data);
     std::vector<polygon> result;
     json.get_array([&]{
         result.emplace_back();
