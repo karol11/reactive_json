@@ -94,7 +94,7 @@ This code handles all the edge cases:
 * If a JSON has an unexpected field, this field will be skipped with all its subtree.
 * This code is tolerant to any order of fields in objects.
 * If some field is absent from the JSON, the corresponding object will have a default value.
-* If some field, root element or array item will have a different type, it will be skipped and replaced with the default value; for example if `json.get_bool(true)` is called on a string data, it'll skip this string and return `true`.
+* If some field, root element or array item will have a different type, it will be skipped and replaced with the default value; for example if `json.get_bool(true)` is called on a array of objects, it'll skip this array and return `true`.
 * Since all parsing is performed in plain C++ code, we can easily add validating/transforming/versioning logic without inventing weird template-driven or string-encoded DSLs.
 * There are additional `*reader::try_*` methods that allow to probe for different data types. Example:
 
@@ -103,7 +103,7 @@ bool get_bool_my_way(reader& json) {
     if (auto i = json.try_number())  // returns optional<double>
         return *i != 0;
     if (auto s = a.try_string(5))
-        return v = *s == "true" || *s == "yes" || *s == "1";
+        return *s == "true" || *s == "yes" || *s == "1";
     return a.get_bool(false);
 }
 ```
