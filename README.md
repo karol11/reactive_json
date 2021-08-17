@@ -1,3 +1,5 @@
+IMPORTANT: This is not an officially supported Google product.
+
 # Reactive JSON
 ## A C++ library that reads/writes JSONs directly from/into the application data structures, skipping all irrelevant pieces of data.
 
